@@ -1,4 +1,4 @@
-# 美股实时炒股分析网页版（Streamlit版，折叠界面 + 移动端优化 + 中文）
+# 美股实时炒股分析网页版（Streamlit版，修复空数据异常）
 
 import yfinance as yf
 import pandas as pd
@@ -33,9 +33,11 @@ def get_realtime_data(tickers):
         }
     return pd.DataFrame(data).T
 
-# 技术分析与信号
+# 技术分析与信号（加空数据判断）
 def calculate_technical_indicators(symbol):
     df = yf.download(symbol, period="3mo", interval="1d")
+    if df.empty or "Close" not in df.columns:
+        raise ValueError(f"{symbol} 无法获取历史价格数据。")
     df["SMA20"] = df["Close"].rolling(window=20).mean()
     df["SMA50"] = df["Close"].rolling(window=50).mean()
     df["涨跌幅"] = df["Close"].pct_change() * 100
@@ -78,9 +80,12 @@ if selected:
     data = get_realtime_data(selected)
 
     for symbol in selected:
-        df = calculate_technical_indicators(symbol)
-        latest = df.tail(1)
-        signal = latest["买入信号"].values[0]
+        try:
+            df = calculate_technical_indicators(symbol)
+            latest = df.tail(1)
+            signal = latest["买入信号"].values[0]
+        except Exception as e:
+            signal = f"❌ 错误：{e}"
         data.loc[symbol, "买入信号"] = signal
 
     st.subheader("📋 实时数据汇总")
@@ -94,10 +99,13 @@ if selected:
 
     for symbol in selected:
         with st.expander(f"📈 {symbol} 技术图表与新闻分析"):
-            df = calculate_technical_indicators(symbol)
-            latest = df.tail(1)
-            st.write("📌 当前买卖信号：", latest["买入信号"].values[0])
-            plot_with_indicators(df, symbol)
+            try:
+                df = calculate_technical_indicators(symbol)
+                latest = df.tail(1)
+                st.write("📌 当前买卖信号：", latest["买入信号"].values[0])
+                plot_with_indicators(df, symbol)
+            except Exception as e:
+                st.error(f"⚠️ 无法获取 {symbol} 图表：{e}")
 
             st.markdown("📰 最新新闻摘要：")
             headlines = fetch_news_sentiment(symbol)
